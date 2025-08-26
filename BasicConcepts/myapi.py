@@ -1,8 +1,16 @@
 from fastapi import FastAPI, Path
 from pydantic import BaseModel
 from typing import Optional
+from psycopg2 import connect, sql
 
 app = FastAPI()
+conn = connect(
+    dbname="test",
+    user="admin",
+    password="admin",
+    host="localhost",
+    port=5432
+)
 
 students = {
     1: {
@@ -22,6 +30,25 @@ students = {
     }
 }
 
+# Migration: Create table if not exists
+def migrate():
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            age INTEGER NOT NULL,
+            class INTEGER NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            active BOOLEAN NOT NULL
+        );
+    """)
+    conn.commit()
+    cursor.close()
+
+migrate()
+
 class Student(BaseModel):
     name: str
     age: int
@@ -38,12 +65,14 @@ def index():
 
 @app.get("/get-student/{student_id}")
 def get_student(student_id: int = Path(..., description="Id is a required parameter",gt=0,lt=10)):
+    # read from database instead of students dict
     if student_id not in students:
         return {"Error": "Student not found"}
     return students[student_id]
 
 @app.get("/get-by-name")
 def get_student(name: str):
+    # read from database instead of students dict
     for student_id in students:
         if students[student_id]["name"] == name:
             print(students[student_id].keys())
@@ -52,6 +81,7 @@ def get_student(name: str):
 
 @app.post("/create-student/{student_id}")
 def create_student(student_id: int, student: Student):
+    # Add to database instead of students dict
     if student_id in students:
         return {"Error": "Student Exists"}
     students[student_id] = student.dict()  # Convert to dict    
@@ -59,6 +89,7 @@ def create_student(student_id: int, student: Student):
 
 @app.put("/update-student/{student_id}")
 def update_student(student_id: int, student: UpdateStudent):
+    # Udpate in database instead of students dict
     if student_id not in students:
         return {"Error": "Student does not exist"}
     if student.name is not None:
@@ -71,6 +102,7 @@ def update_student(student_id: int, student: UpdateStudent):
 
 @app.delete("/delete-student/{student_id}")
 def delete_student(student_id: int):
+    # Soft delete in database instead of students dict
     if student_id not in students:
         return {"Error": "Student does not exist"}
     del students[student_id]
